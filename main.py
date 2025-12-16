@@ -1,30 +1,45 @@
+"""
+Image Processor GUI Application
+
+Main application using modular architecture:
+- modules.image_generation: AI-powered image generation via ChatGPT API (DALL-E)
+- modules.image_correction: Image correction techniques (dithering, pixelation, palette reduction, color fixing)
+- modules.api_service: API integrations (to be implemented)
+"""
+
 from PIL import Image, ImageTk
 import tkinter as tk
-import numpy as np
-from functions.image_processor import (
-    floyd_steinberg, 
-    pixelate_image, 
-    apply_median_palette,
-    fix_image
-)
-from functions.utils import save_image
-from functions.strategies import Strategies
 import os
 
+# Import from new modular structure
+from modules.image_generation import ImageGenerator
+from modules.image_correction import ImageCorrector, Strategies
+from modules.common import save_image
+
+
 class ImageProcessorApp:
+    """Main GUI application for image processing"""
+    
     def __init__(self, root):
         self.root = root
-        self.root.title("Image Processor")
+        self.root.title("Image Processor - Modular Edition")
         
         # Image paths
         self.original_image_path = "./data/untreated/medieval-landscape.png"
         self.processed_image_path = "./data/treated/"
         
+        # Initialize modules
+        self.generator = ImageGenerator()  # For AI image generation
+        self.corrector = ImageCorrector()   # For image correction
+        
         # Load and store the original image in RGB mode
         try:
-            self.input_image = Image.open(self.original_image_path)
-            self.original_image = self.input_image.convert("RGB")  # Permanent reference to the original
-            self.current_image = self.original_image.copy()        # Track current image state
+            input_image = Image.open(self.original_image_path)
+            self.original_image = input_image.convert("RGB")
+            self.current_image = self.original_image.copy()
+            
+            # Set image in corrector
+            self.corrector.set_image(self.original_image)
         except FileNotFoundError:
             print(f"Error: File not found at {self.original_image_path}")
             exit()
@@ -63,35 +78,39 @@ class ImageProcessorApp:
         self.image_label.image = self.tk_image  # Keep a reference
     
     def create_buttons(self):
-        """Create filter application buttons."""
+        """Create application buttons."""
         button_frame = tk.Frame(self.root)
         button_frame.pack(pady=10)
         
-        # Pixelate button
+        # Image Correction section
+        correction_label = tk.Label(button_frame, text="Image Correction:", font=("Arial", 10, "bold"))
+        correction_label.pack(side=tk.LEFT, padx=10)
+        
         tk.Button(
-            button_frame, text="Apply Pixelation", 
-            command=self.apply_pixelation
+            button_frame, text="Pixelation", 
+            command=self.apply_pixelation,
+            bg="#4CAF50", fg="white"
         ).pack(side=tk.LEFT, padx=5)
         
-        # Dithering button
         tk.Button(
-            button_frame, text="Apply Dithering", 
-            command=self.apply_dithering
+            button_frame, text="Dithering", 
+            command=self.apply_dithering,
+            bg="#4CAF50", fg="white"
         ).pack(side=tk.LEFT, padx=5)
         
-        # Median Palette button
         tk.Button(
-            button_frame, text="Median Palette", 
-            command=self.apply_median_palette
+            button_frame, text="Reduce Palette", 
+            command=self.apply_palette_reduction,
+            bg="#4CAF50", fg="white"
         ).pack(side=tk.LEFT, padx=5)
         
-        # Color Fix button
         tk.Button(
-            button_frame, text="Color Fix", 
-            command=self.apply_color_fix
+            button_frame, text="Color Correction", 
+            command=self.apply_color_correction,
+            bg="#2196F3", fg="white"
         ).pack(side=tk.LEFT, padx=5)
         
-        # Strategy selection
+        # Strategy selection for color correction
         self.strategy_var = tk.StringVar(value=Strategies.AVERAGE.name)
         tk.OptionMenu(
             button_frame, 
@@ -102,94 +121,101 @@ class ImageProcessorApp:
         # Reset button
         tk.Button(
             button_frame, text="Reset", 
-            command=self.reset_to_original
+            command=self.reset_to_original,
+            bg="#f44336", fg="white"
         ).pack(side=tk.LEFT, padx=5)
     
     def apply_pixelation(self):
-        """Apply pixelation to the current image."""
+        """Apply pixelation using the image correction module."""
         try:
-            pixelated_image = pixelate_image(self.current_image)
+            # Update corrector with current image
+            self.corrector.set_image(self.current_image)
+            
+            # Apply effect
+            pixelated_image = self.corrector.pixelate(pixel_size=256)
+            
+            # Update current image
             self.current_image = pixelated_image
             self.display_image(self.current_image)
-            self.save_image("pixelated")
+            self.save_current_image("pixelated")
         except Exception as e:
             print(f"Error applying pixelation: {e}")
     
     def apply_dithering(self):
-        """Apply dithering to the current image."""
+        """Apply dithering using the image correction module."""
         try:
-            dithered_image = floyd_steinberg(self.current_image)
+            # Update corrector with current image
+            self.corrector.set_image(self.current_image)
+            
+            # Apply effect
+            dithered_image = self.corrector.dither(levels=10)
+            
+            # Update current image
             self.current_image = dithered_image
             self.display_image(self.current_image)
-            self.save_image("floyd")
+            self.save_current_image("dithered")
         except Exception as e:
             print(f"Error applying dithering: {e}")
     
-    def apply_median_palette(self):
-        """Apply median color palette to the current image."""
+    def apply_palette_reduction(self):
+        """Apply median palette reduction using the image correction module."""
         try:
-            median_image = apply_median_palette(self.current_image, num_colors=32)
-            self.current_image = median_image
+            # Update corrector with current image
+            self.corrector.set_image(self.current_image)
+            
+            # Apply effect
+            reduced_image = self.corrector.reduce_palette(num_colors=32)
+            
+            # Update current image
+            self.current_image = reduced_image
             self.display_image(self.current_image)
-            self.save_image("median")
+            self.save_current_image("palette_reduced")
         except Exception as e:
-            print(f"Error applying median palette: {e}")
+            print(f"Error applying palette reduction: {e}")
     
-    def apply_color_fix(self):
-        """Apply color fix with selected strategy."""
+    def apply_color_correction(self):
+        """Apply color correction using the image correction module."""
         try:
-            # Convert to RGBA if not already
-            if self.current_image.mode != 'RGBA':
-                img_data = np.array(self.current_image.convert("RGBA"))
-            else:
-                img_data = np.array(self.current_image)
-                
+            # Update corrector with current image
+            self.corrector.set_image(self.current_image)
+            
+            # Get selected strategy
             strategy = Strategies[self.strategy_var.get()]
             
-            processed, h, w = fix_image(
-                img_data,
-                self.current_image.height,
-                self.current_image.width,
-                out_pix_width=4,
-                out_pix_height=4,
-                strategy=strategy
+            # Apply correction
+            corrected_image = self.corrector.correct_colors(
+                block_width=4,
+                block_height=4,
+                strategy=strategy,
+                tolerance=1,
+                shrink_output=False
             )
             
-            # Convert to proper image format
-            if processed.dtype != np.uint8:
-                processed = processed.astype(np.uint8)
-            
-            # Convert back to PIL Image
-            if processed.ndim == 3 and processed.shape[2] == 4:
-                self.current_image = Image.fromarray(processed, 'RGBA')
-            elif processed.ndim == 3 and processed.shape[2] == 3:
-                self.current_image = Image.fromarray(processed, 'RGB')
-            else:
-                self.current_image = Image.fromarray(processed)
-            
+            # Update current image
+            self.current_image = corrected_image
             self.display_image(self.current_image)
-            self.save_image(f"colorfix_{strategy.name.lower()}")
+            self.save_current_image(f"color_corrected_{strategy.name.lower()}")
         except Exception as e:
-            print(f"Error applying color fix: {e}")
+            print(f"Error applying color correction: {e}")
     
     def reset_to_original(self):
         """Reset the current image to the original state."""
         self.current_image = self.original_image.copy()
+        self.corrector.reset()
         self.display_image(self.current_image)
     
-    def save_image(self, suffix):
-        """Helper method to save processed images."""
+    def save_current_image(self, suffix):
+        """Save the current processed image."""
         try:
             filename = os.path.basename(self.original_image_path)
             name, ext = os.path.splitext(filename)
-            save_path = os.path.join(self.processed_image_path, f"{name}_{suffix}{ext}")
-            # Make sure the directory exists
-            os.makedirs(self.processed_image_path, exist_ok=True)
-            # Call save_image with correct arguments
-            save_image(self.current_image, self.processed_image_path, f"{name}_{suffix}{ext}")
-            print(f"Image saved to {save_path}")
+            output_filename = f"{name}_{suffix}{ext}"
+            
+            # Use common save_image utility
+            save_image(self.current_image, self.processed_image_path, output_filename)
         except Exception as e:
             print(f"Error saving image: {e}")
+
 
 if __name__ == "__main__":
     root = tk.Tk()
