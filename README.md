@@ -1,14 +1,18 @@
 # AIICAP - Artificial Intelligence Image Correction and Processing
 
-A modular Python-based image processing application with GUI support for various image manipulation techniques including pixelation, dithering, palette reduction, and advanced color correction. Now with planned support for AI-powered image generation via ChatGPT API.
+A modular Python-based image processing system with **standalone services architecture** for AI-powered image generation via ChatGPT API and automated image correction, using PostgreSQL for persistent storage.
 
 ## 🏗️ Architecture
 
-The application follows a **modular architecture** with clear separation of concerns:
+The application follows a **standalone services architecture** with **PostgreSQL database storage**:
 
 ```
 aiicap/
-├── modules/                      # Core modules (NEW)
+├── 🚀 Services (Standalone)
+│   ├── run_generator.py         # Image generation service
+│   └── run_corrector.py         # Image correction service
+│
+├── modules/                      # Core modules
 │   ├── image_generation/         # AI-powered image generation
 │   │   ├── __init__.py
 │   │   └── generator.py          # ChatGPT/DALL-E API integration
@@ -18,25 +22,53 @@ aiicap/
 │   │   ├── effects.py            # Pixelation, dithering, palette reduction
 │   │   ├── strategies.py         # Color processing strategies
 │   │   └── color_utils.py        # Color calculation functions
+│   ├── database/                 # PostgreSQL database
+│   │   ├── __init__.py
+│   │   ├── models.py             # SQLAlchemy models
+│   │   ├── session.py            # Database session management
+│   │   ├── repository.py         # Data access layer
+│   │   └── config.py             # Database configuration
 │   ├── api_service/              # API integrations (planned)
 │   │   └── __init__.py
 │   └── common/                   # Shared utilities
 │       ├── __init__.py
 │       ├── file_utils.py         # Image I/O operations
 │       └── display_utils.py      # Image display utilities
+│
 ├── functions/                    # ⚠️ DEPRECATED - See MIGRATION.md
 ├── data/
-│   ├── untreated/               # Input images
-│   └── treated/                 # Output images
-├── main.py                      # GUI application
+│   ├── untreated/               # ⚠️ DEPRECATED - Images now in PostgreSQL
+│   └── treated/                 # ⚠️ DEPRECATED - Images now in PostgreSQL
+│
+├── setup_database.py            # Database initialization script
+├── exemplo_completo.py          # Complete usage example
 ├── requirements.txt
+├── COMO_RODAR.md               # 🌟 How to run services guide
+├── DATABASE.md                  # Database guide
+├── SERVICOS_IMPLEMENTADOS.md   # Services implementation summary
 ├── README.md
 └── MIGRATION.md                 # Migration guide from old structure
 ```
 
-## ⚠️ Important Notice
+### Service Architecture
 
-**The `functions/` directory is DEPRECATED.** All functionality has been moved to the new `modules/` structure. Please see [MIGRATION.md](MIGRATION.md) for a complete migration guide.
+```
+┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
+│ run_generator.py │────────▶│   PostgreSQL     │◀────────│ run_corrector.py │
+│                  │         │   Database       │         │                  │
+│ Generates images │         │                  │         │ Corrects images  │
+│ continuously     │         │ • generated_     │         │ automatically    │
+│ (ChatGPT API)    │         │   images         │         │ (monitors DB)    │
+└──────────────────┘         │ • corrected_     │         └──────────────────┘
+                             │   images         │
+                             └──────────────────┘
+```
+
+## ⚠️ Important Notices
+
+1. **The `functions/` directory is DEPRECATED.** All functionality has been moved to the new `modules/` structure. See [MIGRATION.md](MIGRATION.md).
+
+2. **The `data/untreated/` and `data/treated/` directories are DEPRECATED.** All images are now stored in **PostgreSQL database**. See [DATABASE.md](DATABASE.md).
 
 ## ✨ Features
 
@@ -71,29 +103,81 @@ aiicap/
 
 ## 🚀 Installation
 
-1. Clone this repository:
+### 1. Clone Repository
 
-   ```bash
-   git clone https://github.com/notNilton/orion-aiicap.git
-   cd aiicap
-   ```
+```bash
+git clone https://github.com/notNilton/orion-aiicap.git
+cd aiicap
+```
 
-2. Install the required dependencies:
+### 2. Install PostgreSQL
 
-   ```bash
-   pip install -r requirements.txt
-   ```
+See [DATABASE.md](DATABASE.md) for detailed PostgreSQL installation instructions.
 
-   Or install them manually:
+**Quick setup:**
 
-   ```bash
-   pip install numpy opencv-python matplotlib numba scikit-learn Pillow
-   ```
+```bash
+# Ubuntu/Debian
+sudo apt install postgresql postgresql-contrib
 
-3. (Optional) For AI image generation, install OpenAI SDK:
-   ```bash
-   pip install openai
-   ```
+# macOS
+brew install postgresql
+brew services start postgresql
+```
+
+### 3. Create Database
+
+```bash
+sudo -u postgres psql
+```
+
+```sql
+CREATE DATABASE aiicap;
+CREATE USER aiicap_user WITH PASSWORD 'your_password';
+GRANT ALL PRIVILEGES ON DATABASE aiicap TO aiicap_user;
+\q
+```
+
+### 4. Configure Environment
+
+```bash
+cp .env.example .env
+```
+
+Edit `.env` with your credentials:
+
+```env
+DATABASE_URL=postgresql://aiicap_user:your_password@localhost:5432/aiicap
+OPENAI_API_KEY=your-openai-api-key-here
+```
+
+### 5. Install Python Dependencies
+
+```bash
+pip install -r requirements.txt
+```
+
+This installs:
+
+- Core: NumPy, Pillow, OpenCV
+- Database: SQLAlchemy, psycopg2
+- AI: OpenAI SDK
+- Scientific: scikit-learn, scipy
+
+### 6. Initialize Database
+
+```bash
+python3 setup_database.py
+```
+
+You should see:
+
+```
+✓ Database setup completed successfully!
+Created tables:
+  - generated_images
+  - corrected_images
+```
 
 ## 💻 Usage
 

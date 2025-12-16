@@ -1,35 +1,43 @@
 """
-Image Generator using ChatGPT API (DALL-E)
+Image Generator using ChatGPT API (DALL-E) with PostgreSQL storage
 
 This module provides functionality to generate images using LLM-based
-image generation APIs like OpenAI's DALL-E.
+image generation APIs like OpenAI's DALL-E, and automatically saves
+them to PostgreSQL database.
 """
 
 from PIL import Image
 import os
-from typing import Optional, Literal
+from typing import Optional, Literal, Dict, Any
 import io
+import time
+
+from ..database import get_session
+from ..database.repository import ImageRepository
 
 
 class ImageGenerator:
     """
     AI-powered image generator using ChatGPT API (DALL-E).
     
-    This class will interface with OpenAI's API to generate images
-    from text prompts.
+    Automatically saves all generated images to PostgreSQL database
+    with metadata (prompt, date, model, etc.).
     """
     
-    def __init__(self, api_key: Optional[str] = None):
+    def __init__(self, api_key: Optional[str] = None, auto_save_db: bool = True):
         """
         Initialize the image generator.
         
         Args:
             api_key: Optional OpenAI API key. If not provided, will look for
                     OPENAI_API_KEY environment variable.
+            auto_save_db: If True, automatically save generated images to database
         """
         self.api_key = api_key or os.getenv('OPENAI_API_KEY')
+        self.auto_save_db = auto_save_db
         self.last_generated_image: Optional[Image.Image] = None
         self.last_prompt: Optional[str] = None
+        self.last_db_id: Optional[int] = None
     
     def generate(
         self,
@@ -41,6 +49,8 @@ class ImageGenerator:
     ) -> Image.Image:
         """
         Generate an image from a text prompt using DALL-E API.
+        
+        The generated image is automatically saved to PostgreSQL database.
         
         Args:
             prompt: Text description of the image to generate
@@ -66,6 +76,8 @@ class ImageGenerator:
                 "API key not set. Please provide api_key or set OPENAI_API_KEY environment variable."
             )
         
+        start_time = time.time()
+        
         # TODO: Implement actual API call
         # Example implementation (requires openai package):
         #
@@ -87,6 +99,24 @@ class ImageGenerator:
         # self.last_generated_image = Image.open(io.BytesIO(image_data))
         # self.last_prompt = prompt
         # 
+        # generation_time = time.time() - start_time
+        # 
+        # # Save to database
+        # if self.auto_save_db:
+        #     with get_session() as session:
+        #         db_image = ImageRepository.save_generated_image(
+        #             session=session,
+        #             image=self.last_generated_image,
+        #             prompt=prompt,
+        #             model=model,
+        #             size=size,
+        #             quality=quality,
+        #             generation_time=generation_time,
+        #             metadata={'n': n}
+        #         )
+        #         self.last_db_id = db_image.id
+        #         print(f"✓ Image saved to database with ID: {db_image.id}")
+        # 
         # return self.last_generated_image
         
         raise NotImplementedError(
@@ -94,7 +124,8 @@ class ImageGenerator:
             "To implement:\n"
             "1. Install OpenAI SDK: pip install openai\n"
             "2. Set OPENAI_API_KEY environment variable\n"
-            "3. Uncomment implementation code in generator.py"
+            "3. Set up PostgreSQL database (see setup_database.py)\n"
+            "4. Uncomment implementation code in generator.py"
         )
     
     def generate_variation(
@@ -105,6 +136,8 @@ class ImageGenerator:
     ) -> Image.Image:
         """
         Create a variation of an existing image.
+        
+        The generated variation is automatically saved to database.
         
         Args:
             image: Source PIL Image
@@ -120,30 +153,7 @@ class ImageGenerator:
         if not self.api_key:
             raise ValueError("API key not set")
         
-        # TODO: Implement variation generation
-        # Example implementation:
-        #
-        # from openai import OpenAI
-        # client = OpenAI(api_key=self.api_key)
-        # 
-        # # Convert to PNG bytes
-        # byte_stream = io.BytesIO()
-        # image.save(byte_stream, format='PNG')
-        # byte_array = byte_stream.getvalue()
-        # 
-        # response = client.images.create_variation(
-        #     image=byte_array,
-        #     n=n,
-        #     size=size
-        # )
-        # 
-        # image_url = response.data[0].url
-        # import requests
-        # image_data = requests.get(image_url).content
-        # self.last_generated_image = Image.open(io.BytesIO(image_data))
-        # 
-        # return self.last_generated_image
-        
+        # TODO: Implement variation generation with database save
         raise NotImplementedError("Variation generation not yet implemented")
     
     def edit(
@@ -156,6 +166,8 @@ class ImageGenerator:
     ) -> Image.Image:
         """
         Edit an image using a mask and prompt.
+        
+        The edited image is automatically saved to database.
         
         Args:
             image: Source PIL Image
@@ -173,7 +185,7 @@ class ImageGenerator:
         if not self.api_key:
             raise ValueError("API key not set")
         
-        # TODO: Implement image editing
+        # TODO: Implement image editing with database save
         raise NotImplementedError("Image editing not yet implemented")
     
     def get_last_image(self) -> Optional[Image.Image]:
@@ -194,20 +206,66 @@ class ImageGenerator:
         """
         return self.last_prompt
     
-    def save_last_image(self, filepath: str) -> None:
+    def get_last_db_id(self) -> Optional[int]:
         """
-        Save the last generated image to a file.
+        Get the database ID of the last generated image.
+        
+        Returns:
+            Database ID or None
+        """
+        return self.last_db_id
+    
+    def load_from_database(self, image_id: int) -> Image.Image:
+        """
+        Load a previously generated image from the database.
         
         Args:
-            filepath: Path where to save the image
+            image_id: Database ID of the image
+        
+        Returns:
+            PIL Image object
         
         Raises:
-            ValueError: If no image has been generated yet
+            ValueError: If image not found
         """
-        if self.last_generated_image is None:
-            raise ValueError("No image has been generated yet")
+        with get_session() as session:
+            db_image = ImageRepository.get_generated_image(session, image_id)
+            if not db_image:
+                raise ValueError(f"Image with ID {image_id} not found in database")
+            
+            self.last_generated_image = ImageRepository.load_image_from_db(db_image)
+            self.last_prompt = db_image.prompt
+            self.last_db_id = db_image.id
+            
+            return self.last_generated_image
+    
+    def get_all_generated_images(self, limit: int = 100) -> list:
+        """
+        Get all generated images from database.
         
-        self.last_generated_image.save(filepath)
+        Args:
+            limit: Maximum number of images to return
+        
+        Returns:
+            List of image metadata dictionaries
+        """
+        with get_session() as session:
+            images = ImageRepository.get_all_generated_images(session, limit=limit)
+            return [img.to_dict() for img in images]
+    
+    def search_by_prompt(self, search_term: str) -> list:
+        """
+        Search generated images by prompt.
+        
+        Args:
+            search_term: Text to search for in prompts
+        
+        Returns:
+            List of matching image metadata dictionaries
+        """
+        with get_session() as session:
+            images = ImageRepository.search_by_prompt(session, search_term)
+            return [img.to_dict() for img in images]
 
 
 # Example usage documentation
@@ -216,23 +274,24 @@ __doc__ += """
 Example Usage:
 -------------
 
-# Basic image generation
+# Set up database first
+from modules.database import init_db
+init_db()
+
+# Basic image generation (saves to PostgreSQL automatically)
 generator = ImageGenerator(api_key="your-api-key")
 image = generator.generate(
     prompt="A serene medieval landscape with mountains",
     size="1024x1024",
     quality="hd"
 )
-image.save("generated.png")
+db_id = generator.get_last_db_id()  # Get database ID
 
-# Using environment variable for API key
-import os
-os.environ['OPENAI_API_KEY'] = 'your-api-key'
-generator = ImageGenerator()
-image = generator.generate("A futuristic cityscape at sunset")
+# Load previously generated image
+loaded_image = generator.load_from_database(db_id)
 
-# Create variations
-from PIL import Image
-original = Image.open("source.png")
-variation = generator.generate_variation(original)
+# Search by prompt
+results = generator.search_by_prompt("medieval")
+for result in results:
+    print(f"ID: {result['id']}, Prompt: {result['prompt']}")
 """

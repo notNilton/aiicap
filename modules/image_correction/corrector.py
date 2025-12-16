@@ -1,16 +1,20 @@
 """
-Image Corrector class for comprehensive image correction
+Image Corrector class for comprehensive image correction with PostgreSQL storage
 
 Includes:
 - Block-based color correction
 - Pixelation
 - Dithering
 - Palette reduction
+- Automatic database saving of corrected images
 """
 
 import numpy as np
 from PIL import Image
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Dict, Any
+import time
+import json
+
 from .strategies import Strategies
 from .effects import apply_pixelation, apply_dithering, apply_median_palette
 from .color_utils import (
@@ -22,28 +26,36 @@ from .color_utils import (
     get_quadratic_mean_of_colors,
     get_cubic_mean_of_colors
 )
+from ..database import get_session
+from ..database.repository import ImageRepository
 
 
 class ImageCorrector:
     """
-    Comprehensive image correction tool.
+    Comprehensive image correction tool with database integration.
     
     Provides methods for:
     - Block-based color correction with multiple strategies
     - Pixelation effects
     - Floyd-Steinberg dithering
     - Median palette reduction
+    - Automatic PostgreSQL storage of corrected images
     """
     
-    def __init__(self, image: Optional[Image.Image] = None):
+    def __init__(self, image: Optional[Image.Image] = None, source_db_id: Optional[int] = None, auto_save_db: bool = True):
         """
         Initialize the image corrector.
         
         Args:
             image: Optional PIL Image to process
+            source_db_id: Optional database ID of the source generated image
+            auto_save_db: If True, automatically save corrected images to database
         """
         self.original_image = image.convert("RGB") if image else None
         self.current_image = self.original_image.copy() if self.original_image else None
+        self.source_db_id = source_db_id
+        self.auto_save_db = auto_save_db
+        self.last_correction_db_id: Optional[int] = None
     
     def load_image(self, image_path: str) -> None:
         """
@@ -55,19 +67,48 @@ class ImageCorrector:
         self.original_image = Image.open(image_path).convert("RGB")
         self.current_image = self.original_image.copy()
     
-    def set_image(self, image: Image.Image) -> None:
+    def load_from_database(self, image_id: int, is_generated: bool = True) -> None:
+        """
+        Load an image from the database.
+        
+        Args:
+            image_id: Database ID of the image
+            is_generated: If True, load from generated_images table, else from corrected_images
+        """
+        with get_session() as session:
+            if is_generated:
+                db_image = ImageRepository.get_generated_image(session, image_id)
+                if not db_image:
+                    raise ValueError(f"Generated image with ID {image_id} not found")
+                self.original_image = ImageRepository.load_image_from_db(db_image)
+                self.source_db_id = image_id
+            else:
+                db_image = ImageRepository.get_corrected_image(session, image_id)
+                if not db_image:
+                    raise ValueError(f"Corrected image with ID {image_id} not found")
+                self.original_image = ImageRepository.load_corrected_image_from_db(db_image)
+                self.source_db_id = db_image.source_image_id
+            
+            self.current_image = self.original_image.copy()
+    
+    def set_image(self, image: Image.Image, source_db_id: Optional[int] = None) -> None:
         """
         Set the image to process.
         
         Args:
             image: PIL Image object
+            source_db_id: Optional database ID of the source image
         """
         self.original_image = image.convert("RGB")
         self.current_image = self.original_image.copy()
+        if source_db_id:
+            self.source_db_id = source_db_id
     
     def pixelate(self, pixel_size: int = 256) -> Image.Image:
         """
         Apply pixelation effect to the current image.
+        
+        Automatically saves to database if auto_save_db is True.
         
         Args:
             pixel_size: Size of pixel blocks
@@ -78,12 +119,25 @@ class ImageCorrector:
         if self.current_image is None:
             raise ValueError("No image loaded")
         
+        start_time = time.time()
         self.current_image = apply_pixelation(self.current_image, pixel_size)
+        processing_time = time.time() - start_time
+        
+        # Save to database
+        if self.auto_save_db and self.source_db_id:
+            self._save_to_database(
+                correction_type='pixelation',
+                parameters={'pixel_size': pixel_size},
+                processing_time=processing_time
+            )
+        
         return self.current_image
     
     def dither(self, levels: int = 10) -> Image.Image:
         """
         Apply Floyd-Steinberg dithering to the current image.
+        
+        Automatically saves to database if auto_save_db is True.
         
         Args:
             levels: Number of color levels
@@ -94,12 +148,25 @@ class ImageCorrector:
         if self.current_image is None:
             raise ValueError("No image loaded")
         
+        start_time = time.time()
         self.current_image = apply_dithering(self.current_image, levels)
+        processing_time = time.time() - start_time
+        
+        # Save to database
+        if self.auto_save_db and self.source_db_id:
+            self._save_to_database(
+                correction_type='dithering',
+                parameters={'levels': levels},
+                processing_time=processing_time
+            )
+        
         return self.current_image
     
     def reduce_palette(self, num_colors: int = 32) -> Image.Image:
         """
         Apply median palette reduction to the current image.
+        
+        Automatically saves to database if auto_save_db is True.
         
         Args:
             num_colors: Number of colors in the reduced palette
@@ -110,7 +177,18 @@ class ImageCorrector:
         if self.current_image is None:
             raise ValueError("No image loaded")
         
+        start_time = time.time()
         self.current_image = apply_median_palette(self.current_image, num_colors)
+        processing_time = time.time() - start_time
+        
+        # Save to database
+        if self.auto_save_db and self.source_db_id:
+            self._save_to_database(
+                correction_type='palette_reduction',
+                parameters={'num_colors': num_colors},
+                processing_time=processing_time
+            )
+        
         return self.current_image
     
     def correct_colors(
@@ -124,6 +202,8 @@ class ImageCorrector:
         """
         Apply block-based color correction.
         
+        Automatically saves to database if auto_save_db is True.
+        
         Args:
             block_width: Width of processing blocks
             block_height: Height of processing blocks
@@ -136,6 +216,8 @@ class ImageCorrector:
         """
         if self.current_image is None:
             raise ValueError("No image loaded")
+        
+        start_time = time.time()
         
         # Convert to numpy array
         if self.current_image.mode != 'RGBA':
@@ -166,7 +248,60 @@ class ImageCorrector:
         else:
             self.current_image = Image.fromarray(processed)
         
+        processing_time = time.time() - start_time
+        
+        # Save to database
+        if self.auto_save_db and self.source_db_id:
+            self._save_to_database(
+                correction_type='color_correction',
+                parameters={
+                    'block_width': block_width,
+                    'block_height': block_height,
+                    'strategy': strategy.name,
+                    'tolerance': tolerance,
+                    'shrink_output': shrink_output
+                },
+                processing_time=processing_time
+            )
+        
         return self.current_image
+    
+    def _save_to_database(
+        self,
+        correction_type: str,
+        parameters: Dict[str, Any],
+        processing_time: float
+    ) -> None:
+        """
+        Save corrected image to database.
+        
+        Args:
+            correction_type: Type of correction applied
+            parameters: Parameters used
+            processing_time: Time taken to process
+        """
+        try:
+            with get_session() as session:
+                # Get original prompt if available
+                original_prompt = None
+                if self.source_db_id:
+                    source = ImageRepository.get_generated_image(session, self.source_db_id)
+                    if source:
+                        original_prompt = source.prompt
+                
+                db_image = ImageRepository.save_corrected_image(
+                    session=session,
+                    image=self.current_image,
+                    source_image_id=self.source_db_id,
+                    correction_type=correction_type,
+                    parameters=parameters,
+                    original_prompt=original_prompt,
+                    processing_time=processing_time
+                )
+                self.last_correction_db_id = db_image.id
+                print(f"✓ Corrected image saved to database with ID: {db_image.id}")
+        except Exception as e:
+            print(f"⚠ Warning: Could not save to database: {e}")
     
     def _fix_image(
         self,
@@ -179,22 +314,7 @@ class ImageCorrector:
         tolerance: int = 1,
         shrink_output: bool = False
     ) -> Tuple[np.ndarray, int, int]:
-        """
-        Process an image using block-based color strategies.
-        
-        Args:
-            image_data: Input image as numpy array (height, width, channels)
-            height: Original image height
-            width: Original image width
-            out_pix_width: Output pixel block width
-            out_pix_height: Output pixel block height
-            strategy: Color processing strategy
-            tolerance: Color matching tolerance
-            shrink_output: Whether to shrink output to block size
-        
-        Returns:
-            Tuple of (processed_image, new_height, new_width)
-        """
+        """Process an image using block-based color strategies."""
         # Adjust dimensions to be divisible by block size
         adjusted_width = (width // out_pix_width) * out_pix_width
         adjusted_height = (height // out_pix_height) * out_pix_height
@@ -247,17 +367,7 @@ class ImageCorrector:
         strategy: Strategies,
         tolerance: int
     ) -> np.ndarray:
-        """
-        Process a single block using the specified strategy.
-        
-        Args:
-            block: Block of pixels to process
-            strategy: Processing strategy
-            tolerance: Color matching tolerance
-        
-        Returns:
-            Processed block
-        """
+        """Process a single block using the specified strategy."""
         if strategy == Strategies.MAJORITY:
             color, _ = get_majority_color(block, tolerance)
             return np.tile(color, (len(block), 1))
@@ -296,25 +406,35 @@ class ImageCorrector:
         self.current_image = self.original_image.copy()
     
     def get_current_image(self) -> Image.Image:
-        """
-        Get the current processed image.
-        
-        Returns:
-            Current PIL Image
-        """
+        """Get the current processed image."""
         if self.current_image is None:
             raise ValueError("No image loaded")
         
         return self.current_image
     
     def get_original_image(self) -> Image.Image:
-        """
-        Get the original unprocessed image.
-        
-        Returns:
-            Original PIL Image
-        """
+        """Get the original unprocessed image."""
         if self.original_image is None:
             raise ValueError("No image loaded")
         
         return self.original_image
+    
+    def get_last_correction_db_id(self) -> Optional[int]:
+        """Get the database ID of the last saved correction."""
+        return self.last_correction_db_id
+    
+    def get_all_corrections(self) -> list:
+        """
+        Get all corrections for the current source image.
+        
+        Returns:
+            List of correction metadata dictionaries
+        """
+        if not self.source_db_id:
+            return []
+        
+        with get_session() as session:
+            corrections = ImageRepository.get_corrected_images_by_source(
+                session, self.source_db_id
+            )
+            return [corr.to_dict() for corr in corrections]

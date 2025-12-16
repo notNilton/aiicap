@@ -7,6 +7,14 @@ Pillow
 scikit-learn
 scipy
 
+# Database (PostgreSQL)
+SQLAlchemy>=2.0.0
+psycopg2-binary
+python-dotenv  # For loading .env files
+
+# AI Image Generation
+openai>=1.0.0  # For DALL-E image generation
+
 # Visualization
 matplotlib
 seaborn
