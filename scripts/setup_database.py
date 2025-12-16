@@ -7,6 +7,9 @@ Initialize the PostgreSQL database and create all tables.
 import sys
 import os
 
+# Adicionar diretório raiz ao path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 # Add parent directory to path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

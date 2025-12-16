@@ -9,12 +9,17 @@ Este script demonstra:
 - Consulta de histórico
 """
 
+import sys
+import os
+
+# Adicionar diretório raiz ao path
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from modules.image_generation import ImageGenerator
 from modules.image_correction import ImageCorrector, Strategies
 from modules.database import init_db
 from modules.common import save_image, load_image
 from PIL import Image
-import os
 
 
 def main():

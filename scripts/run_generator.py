@@ -6,7 +6,7 @@ Este serviço roda continuamente gerando imagens via ChatGPT API
 e salvando-as automaticamente no PostgreSQL.
 
 Uso:
-    python3 run_generator.py
+    python3 scripts/run_generator.py
 
 Configuração:
     - OPENAI_API_KEY no .env
@@ -14,8 +14,13 @@ Configuração:
 """
 
 import os
+import sys
 import time
 from datetime import datetime
+
+# Adicionar diretório raiz ao path (já que script está em scripts/)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from modules.image_generation import ImageGenerator
 from modules.database import init_db
 from dotenv import load_dotenv

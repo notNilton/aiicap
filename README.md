@@ -1,17 +1,13 @@
 # AIICAP - Artificial Intelligence Image Correction and Processing
 
-A modular Python-based image processing system with **standalone services architecture** for AI-powered image generation via ChatGPT API and automated image correction, using PostgreSQL for persistent storage.
+A modular Python-based image processing application with **PostgreSQL database integration** for AI-powered image generation via ChatGPT API and advanced image correction techniques.
 
 ## 🏗️ Architecture
 
-The application follows a **standalone services architecture** with **PostgreSQL database storage**:
+The application follows a **modular architecture** with **PostgreSQL database storage**:
 
 ```
 aiicap/
-├── 🚀 Services (Standalone)
-│   ├── run_generator.py         # Image generation service
-│   └── run_corrector.py         # Image correction service
-│
 ├── modules/                      # Core modules
 │   ├── image_generation/         # AI-powered image generation
 │   │   ├── __init__.py
@@ -22,7 +18,7 @@ aiicap/
 │   │   ├── effects.py            # Pixelation, dithering, palette reduction
 │   │   ├── strategies.py         # Color processing strategies
 │   │   └── color_utils.py        # Color calculation functions
-│   ├── database/                 # PostgreSQL database
+│   ├── database/                 # PostgreSQL database (NEW)
 │   │   ├── __init__.py
 │   │   ├── models.py             # SQLAlchemy models
 │   │   ├── session.py            # Database session management
@@ -34,34 +30,16 @@ aiicap/
 │       ├── __init__.py
 │       ├── file_utils.py         # Image I/O operations
 │       └── display_utils.py      # Image display utilities
-│
 ├── functions/                    # ⚠️ DEPRECATED - See MIGRATION.md
 ├── data/
 │   ├── untreated/               # ⚠️ DEPRECATED - Images now in PostgreSQL
 │   └── treated/                 # ⚠️ DEPRECATED - Images now in PostgreSQL
-│
+├── main.py                      # GUI application
 ├── setup_database.py            # Database initialization script
-├── exemplo_completo.py          # Complete usage example
 ├── requirements.txt
-├── COMO_RODAR.md               # 🌟 How to run services guide
 ├── DATABASE.md                  # Database guide
-├── SERVICOS_IMPLEMENTADOS.md   # Services implementation summary
 ├── README.md
 └── MIGRATION.md                 # Migration guide from old structure
-```
-
-### Service Architecture
-
-```
-┌──────────────────┐         ┌──────────────────┐         ┌──────────────────┐
-│ run_generator.py │────────▶│   PostgreSQL     │◀────────│ run_corrector.py │
-│                  │         │   Database       │         │                  │
-│ Generates images │         │                  │         │ Corrects images  │
-│ continuously     │         │ • generated_     │         │ automatically    │
-│ (ChatGPT API)    │         │   images         │         │ (monitors DB)    │
-└──────────────────┘         │ • corrected_     │         └──────────────────┘
-                             │   images         │
-                             └──────────────────┘
 ```
 
 ## ⚠️ Important Notices

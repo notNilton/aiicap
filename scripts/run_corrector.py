@@ -6,7 +6,7 @@ Este serviço monitora o banco de dados em busca de imagens geradas
 que ainda não foram corrigidas, e aplica automaticamente as correções.
 
 Uso:
-    python3 run_corrector.py
+    python3 scripts/run_corrector.py
 
 Configuração:
     - Configurações do banco no .env
@@ -14,8 +14,13 @@ Configuração:
 """
 
 import os
+import sys
 import time
 from datetime import datetime
+
+# Adicionar diretório raiz ao path (já que script está em scripts/)
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 from modules.image_correction import ImageCorrector, Strategies, apply_pixelation, apply_dithering
 from modules.storage import get_storage
 from dotenv import load_dotenv
