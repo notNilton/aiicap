@@ -144,8 +144,7 @@ class ImageGenerationService:
     def _simulate_generation(self, prompt: str):
         """Modo simulação para testes sem API real"""
         from PIL import Image
-        from modules.database import get_session
-        from modules.database.repository import ImageRepository
+        from modules.storage import get_storage
         import random
         
         print("[SIMULATION] Gerando imagem simulada...")
@@ -155,20 +154,18 @@ class ImageGenerationService:
         color = random.choice(colors)
         image = Image.new('RGB', (512, 512), color=color)
         
-        # Salvar no banco
-        with get_session() as session:
-            db_image = ImageRepository.save_generated_image(
-                session=session,
-                image=image,
-                prompt=prompt,
-                model="simulation",
-                size="512x512",
-                quality="standard",
-                generation_time=0.1,
-                metadata={'mode': 'simulation'}
-            )
-            db_id = db_image.id
-            print(f"[SIMULATION] Imagem simulada salva (ID: {db_id})")
+        # Salvar usando storage abstrato
+        storage = get_storage()
+        db_id = storage.save_generated_image(
+            image=image,
+            prompt=prompt,
+            model="simulation",
+            size="512x512",
+            quality="standard",
+            generation_time=0.1,
+            extra_metadata={'mode': 'simulation'}
+        )
+        print(f"[SIMULATION] Imagem simulada salva (ID: {db_id})")
     
     def stop(self):
         """Parar serviço"""

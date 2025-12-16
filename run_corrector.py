@@ -17,11 +17,8 @@ import os
 import time
 from datetime import datetime
 from modules.image_correction import ImageCorrector, Strategies, apply_pixelation, apply_dithering
-from modules.database import init_db, get_session
-from modules.database.models import GeneratedImage, CorrectedImage
-from modules.database.repository import ImageRepository
+from modules.storage import get_storage
 from dotenv import load_dotenv
-from sqlalchemy import and_, not_, exists
 
 # Carregar variáveis de ambiente
 load_dotenv()
@@ -87,9 +84,12 @@ class ImageCorrectionService:
     
     def start(self):
         """Iniciar serviço"""
-        print("[INFO] Inicializando banco de dados...")
-        init_db()
-        print("[OK] Banco de dados pronto\n")
+        print("[INFO] Inicializando storage...")
+        self.storage = get_storage()
+        
+        use_db = os.getenv('USE_DATABASE', 'true').lower() == 'true'
+        storage_type = "PostgreSQL" if use_db else "File System"
+        print(f"[OK] Storage pronto ({storage_type})\n")
         
         self.running = True
         print(f"[INFO] Serviço iniciado em {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
@@ -113,7 +113,7 @@ class ImageCorrectionService:
                 print("-" * 60)
                 
                 # Buscar imagens que precisam de correção
-                uncorrected_images = self._find_uncorrected_images()
+                uncorrected_images = self.storage.get_uncorrected_images(self.batch_size)
                 
                 if not uncorrected_images:
                     print("[INFO] Nenhuma imagem nova para corrigir")
@@ -121,7 +121,7 @@ class ImageCorrectionService:
                     print(f"[INFO] Encontradas {len(uncorrected_images)} imagens para corrigir")
                     
                     # Processar cada imagem
-                    for img_id in uncorrected_images:
+                    for img_id, prompt in uncorrected_images:
                         self._process_image(img_id)
                 
                 # Aguardar antes da próxima verificação
@@ -136,43 +136,27 @@ class ImageCorrectionService:
                 traceback.print_exc()
                 time.sleep(5)
     
-    def _find_uncorrected_images(self):
-        """Encontrar imagens que ainda não foram corrigidas"""
-        with get_session() as session:
-            # Buscar imagens geradas que não têm todas as correções
-            query = session.query(GeneratedImage.id).filter(
-                # Não tem todas as correções do pipeline
-                not_(
-                    exists().where(
-                        and_(
-                            CorrectedImage.source_image_id == GeneratedImage.id,
-                            CorrectedImage.correction_type == self.correction_pipeline[-1]['name']
-                        )
-                    )
-                )
-            ).limit(self.batch_size)
-            
-            return [img_id for (img_id,) in query.all()]
-    
     def _process_image(self, image_id: int):
         """Processar uma imagem aplicando todas as correções"""
         timestamp = datetime.now().strftime('%H:%M:%S')
         print(f"  [{timestamp}] Processando imagem ID: {image_id}")
         
         try:
-            # Carregar imagem do banco
-            corrector = ImageCorrector(source_db_id=image_id, auto_save_db=True)
-            corrector.load_from_database(image_id, is_generated=True)
+            # Carregar imagem do storage
+            image = self.storage.load_image(image_id, is_generated=True)
+            if not image:
+                print(f"  [ERROR] Imagem {image_id} não encontrada")
+                return
             
             # Verificar quais correções já foram aplicadas
-            existing_corrections = set()
-            with get_session() as session:
-                corrections = session.query(CorrectedImage.correction_type).filter(
-                    CorrectedImage.source_image_id == image_id
-                ).all()
-                existing_corrections = {corr_type for (corr_type,) in corrections}
+            # Para file system, isso está no metadata
+            # Para database, consultar banco
+            existing_corrections = self._get_existing_corrections(image_id)
             
             # Aplicar correções que ainda não foram feitas
+            corrector = ImageCorrector(auto_save_db=False)  # Não salvar automaticamente
+            corrector.set_image(image)
+            
             for step in self.correction_pipeline:
                 correction_name = step['name']
                 
@@ -185,11 +169,20 @@ class ImageCorrectionService:
                 try:
                     # Aplicar correção
                     step['function'](corrector)
+                    corrected_image = corrector.get_current_image()
+                    
+                    # Salvar no storage
+                    self.storage.save_corrected_image(
+                        image=corrected_image,
+                        source_id=image_id,
+                        correction_type=correction_name,
+                        parameters=step['parameters']
+                    )
+                    
                     print(f"    [OK] {correction_name} concluída")
                     
                 except Exception as e:
                     print(f"    [ERROR] Erro em {correction_name}: {e}")
-                    # Continuar com próxima correção mesmo se uma falhar
             
             print(f"  [OK] Imagem {image_id} processada com sucesso")
             
@@ -197,6 +190,33 @@ class ImageCorrectionService:
             print(f"  [ERROR] Erro ao processar imagem {image_id}: {e}")
             import traceback
             traceback.print_exc()
+    
+    def _get_existing_corrections(self, image_id: int) -> set:
+        """Obter correções já aplicadas"""
+        use_db = os.getenv('USE_DATABASE', 'true').lower() == 'true'
+        
+        if use_db:
+            # PostgreSQL
+            from modules.database import get_session
+            from modules.database.models import CorrectedImage
+            
+            with get_session() as session:
+                corrections = session.query(CorrectedImage.correction_type).filter(
+                    CorrectedImage.source_image_id == image_id
+                ).all()
+                return {corr_type for (corr_type,) in corrections}
+        else:
+            # File System - ler do metadata
+            import json
+            metadata_path = f"./data/metadata/generated_{image_id}.json"
+            
+            if os.path.exists(metadata_path):
+                with open(metadata_path, 'r') as f:
+                    metadata = json.load(f)
+                    corrections = metadata.get('corrections', [])
+                    return {c['type'] for c in corrections}
+            
+            return set()
     
     def stop(self):
         """Parar serviço"""
