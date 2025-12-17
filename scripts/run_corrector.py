@@ -21,12 +21,13 @@ from datetime import datetime
 # Adicionar diretório raiz ao path (já que script está em scripts/)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from modules.image_correction import ImageCorrector, Strategies, apply_pixelation, apply_dithering
-from modules.storage import get_storage
 from dotenv import load_dotenv
 
 # Carregar variáveis de ambiente
 load_dotenv()
+
+from modules.image_correction import ImageCorrector, Strategies, apply_pixelation, apply_dithering
+from modules.storage import get_storage
 
 
 class ImageCorrectionService:

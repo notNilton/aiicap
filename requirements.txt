@@ -10,10 +10,10 @@ scipy
 # Database (PostgreSQL)
 SQLAlchemy>=2.0.0
 psycopg2-binary
-python-dotenv  # For loading .env files
+python-dotenv
 
 # AI Image Generation
-openai>=1.0.0  # For DALL-E image generation
+openai>=1.0.0
 
 # Visualization
 matplotlib

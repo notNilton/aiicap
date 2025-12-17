@@ -21,12 +21,13 @@ from datetime import datetime
 # Adicionar diretório raiz ao path (já que script está em scripts/)
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from modules.image_generation import ImageGenerator
-from modules.database import init_db
 from dotenv import load_dotenv
 
 # Carregar variáveis de ambiente
 load_dotenv()
+
+from modules.image_generation import ImageGenerator
+from modules.database import init_db
 
 
 class ImageGenerationService:
