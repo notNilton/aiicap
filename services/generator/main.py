@@ -6,7 +6,7 @@ Este serviço roda continuamente gerando imagens via ChatGPT API
 e salvando-as automaticamente no PostgreSQL.
 
 Uso:
-    python3 scripts/run_generator.py
+    python3 services/generator/main.py
 
 Configuração:
     - OPENAI_API_KEY no .env
@@ -26,8 +26,8 @@ from dotenv import load_dotenv
 # Carregar variáveis de ambiente
 load_dotenv()
 
-from app.core.generator import ImageGenerator
-from app.infra.database import init_db
+from core.generator import ImageGenerator
+from infra.database import init_db
 
 
 class ImageGenerationService:
@@ -99,7 +99,7 @@ class ImageGenerationService:
                 except NotImplementedError:
                     # API ainda não implementada
                     print("[WARN] ChatGPT API não configurada. Use modo simulação:")
-                    print("[WARN] Descomente o código em modules/image_generation/generator.py")
+                    print("[WARN] Descomente o código em core/generator.py")
                     print("[WARN] Ou rode em modo simulação para testes")
                     
                     # Modo simulação para testes
