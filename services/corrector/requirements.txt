@@ -1,0 +1,8 @@
+numpy
+opencv-python
+Pillow
+scikit-learn
+scipy
+SQLAlchemy>=2.0.0
+psycopg2-binary
+python-dotenv

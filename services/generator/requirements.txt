@@ -1,0 +1,5 @@
+openai>=1.0.0
+Pillow
+SQLAlchemy>=2.0.0
+psycopg2-binary
+python-dotenv
