@@ -20,7 +20,7 @@ export interface CorrectionRequest {
     parameters?: Record<string, unknown>;
 }
 
-export interface ImageData {
+export interface ApiImage {
     id: number;
     prompt?: string;
     model?: string;
@@ -60,13 +60,13 @@ class ApiClient {
 
     // Images
     async listImages(page = 1, perPage = 20, type: 'all' | 'generated' | 'corrected' = 'all') {
-        return this.request<{ images: ImageData[]; total: number }>(
+        return this.request<{ images: ApiImage[]; total: number }>(
             `/images?page=${page}&per_page=${perPage}&type=${type}`
         );
     }
 
     async getImage(id: number) {
-        return this.request<ImageData>(`/images/${id}`);
+        return this.request<ApiImage>(`/images/${id}`);
     }
 
     async deleteImage(id: number) {

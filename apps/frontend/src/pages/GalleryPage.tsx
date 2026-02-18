@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import api, { ImageData } from '../services/api';
+import api, { type ApiImage } from '../services/api';
+import './GalleryPage.style.css';
 
 export default function GalleryPage() {
-    const [images, setImages] = useState<ImageData[]>([]);
+    const [images, setImages] = useState<ApiImage[]>([]);
     const [loading, setLoading] = useState(true);
     const [filter, setFilter] = useState<'all' | 'generated' | 'corrected'>('all');
     const [page, setPage] = useState(1);
@@ -23,8 +24,9 @@ export default function GalleryPage() {
         }
     };
 
-    const handleDelete = async (id: number) => {
-        if (!confirm('Deseja realmente excluir esta imagem?')) return;
+    const handleDelete = async (id: number, e: React.MouseEvent) => {
+        e.stopPropagation();
+        if (!confirm('Delete this image?')) return;
 
         try {
             await api.deleteImage(id);
@@ -35,66 +37,87 @@ export default function GalleryPage() {
     };
 
     return (
-        <div className="page gallery-page">
-            <h1>🖼️ Galeria</h1>
+        <div className="gallery-page">
+            <header className="gallery-header">
+                <h1 className="gallery-title">Gallery</h1>
 
-            <div className="filter-section">
-                <button
-                    className={filter === 'all' ? 'active' : ''}
-                    onClick={() => setFilter('all')}
-                >
-                    Todas
-                </button>
-                <button
-                    className={filter === 'generated' ? 'active' : ''}
-                    onClick={() => setFilter('generated')}
-                >
-                    Geradas
-                </button>
-                <button
-                    className={filter === 'corrected' ? 'active' : ''}
-                    onClick={() => setFilter('corrected')}
-                >
-                    Corrigidas
-                </button>
-            </div>
+                <div className="filter-group">
+                    {(['all', 'generated', 'corrected'] as const).map((TYPE) => (
+                        <button
+                            key={TYPE}
+                            className={`filter-btn ${filter === TYPE ? 'active' : ''}`}
+                            onClick={() => setFilter(TYPE)}
+                        >
+                            {TYPE.charAt(0).toUpperCase() + TYPE.slice(1)}
+                        </button>
+                    ))}
+                </div>
+            </header>
 
-            {loading ? (
-                <div className="loading">Carregando...</div>
+            {loading && images.length === 0 ? (
+                <div className="loading-spinner">Loading...</div>
             ) : images.length === 0 ? (
                 <div className="empty-state">
-                    <p>Nenhuma imagem encontrada.</p>
-                    <p>Gere sua primeira imagem na aba "Gerar"!</p>
+                    <p>No images found</p>
                 </div>
             ) : (
-                <div className="image-grid">
-                    {images.map(image => (
-                        <div key={image.id} className="image-card">
-                            <img
-                                src={`/uploads/${image.is_corrected ? 'corrected' : 'generated'}_${image.id}.png`}
-                                alt={image.prompt || 'Image'}
-                            />
-                            <div className="image-info">
-                                <p className="prompt">{image.prompt}</p>
-                                <p className="meta">
-                                    {image.size} • {new Date(image.created_at).toLocaleDateString('pt-BR')}
-                                </p>
+                <div className="gallery-grid">
+                    {images.map(image => {
+                        const imageUrl = `/uploads/${image.is_corrected ? 'corrected' : 'generated'}_${image.id}.png`;
+                        return (
+                            <div
+                                key={image.id}
+                                className="image-card"
+                                onClick={() => window.open(imageUrl, '_blank')}
+                                role="button"
+                                tabIndex={0}
+                                onKeyDown={(e) => {
+                                    if (e.key === 'Enter' || e.key === ' ') {
+                                        window.open(imageUrl, '_blank');
+                                    }
+                                }}
+                            >
+                                <img
+                                    src={imageUrl}
+                                    alt={image.prompt || 'Untitled'}
+                                    loading="lazy"
+                                />
+                                <div className="card-overlay">
+                                    <p className="card-prompt">{image.prompt}</p>
+                                    <div className="card-meta">
+                                        <span>{image.size}</span>
+                                        <button
+                                            className="delete-btn"
+                                            onClick={(e) => handleDelete(image.id, e)}
+                                            title="Delete"
+                                        >
+                                            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                                                <polyline points="3 6 5 6 21 6"></polyline>
+                                                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                            </svg>
+                                        </button>
+                                    </div>
+                                </div>
                             </div>
-                            <div className="image-actions">
-                                <button onClick={() => handleDelete(image.id)}>🗑️</button>
-                            </div>
-                        </div>
-                    ))}
+                        );
+                    })}
                 </div>
             )}
 
             <div className="pagination">
-                <button disabled={page === 1} onClick={() => setPage(p => p - 1)}>
-                    ← Anterior
+                <button
+                    className="page-btn"
+                    disabled={page === 1}
+                    onClick={() => setPage(p => p - 1)}
+                >
+                    Prev
                 </button>
-                <span>Página {page}</span>
-                <button onClick={() => setPage(p => p + 1)}>
-                    Próxima →
+                <span style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>{page}</span>
+                <button
+                    className="page-btn"
+                    onClick={() => setPage(p => p + 1)}
+                >
+                    Next
                 </button>
             </div>
         </div>
