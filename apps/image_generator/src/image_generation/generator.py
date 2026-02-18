@@ -12,8 +12,8 @@ from typing import Optional, Literal, Dict, Any
 import io
 import time
 
-from ..database import get_session
-from ..database.repository import ImageRepository
+from database import get_session
+from database.repository import ImageRepository
 
 
 class ImageGenerator:
@@ -73,60 +73,58 @@ class ImageGenerator:
         """
         if not self.api_key:
             raise ValueError(
-                "API key not set. Please provide api_key or set OPENAI_API_KEY environment variable."
+                "API key not set. Please set OPENAI_API_KEY environment variable."
             )
         
         start_time = time.time()
         
-        # TODO: Implement actual API call
-        # Example implementation (requires openai package):
-        #
-        # from openai import OpenAI
-        # client = OpenAI(api_key=self.api_key)
-        # 
-        # response = client.images.generate(
-        #     model=model,
-        #     prompt=prompt,
-        #     size=size,
-        #     quality=quality,
-        #     n=n,
-        # )
-        # 
-        # image_url = response.data[0].url
-        # # Download and convert to PIL Image
-        # import requests
-        # image_data = requests.get(image_url).content
-        # self.last_generated_image = Image.open(io.BytesIO(image_data))
-        # self.last_prompt = prompt
-        # 
-        # generation_time = time.time() - start_time
-        # 
-        # # Save to database
-        # if self.auto_save_db:
-        #     with get_session() as session:
-        #         db_image = ImageRepository.save_generated_image(
-        #             session=session,
-        #             image=self.last_generated_image,
-        #             prompt=prompt,
-        #             model=model,
-        #             size=size,
-        #             quality=quality,
-        #             generation_time=generation_time,
-        #             metadata={'n': n}
-        #         )
-        #         self.last_db_id = db_image.id
-        #         print(f"✓ Image saved to database with ID: {db_image.id}")
-        # 
-        # return self.last_generated_image
-        
-        raise NotImplementedError(
-            "Image generation is not yet implemented. "
-            "To implement:\n"
-            "1. Install OpenAI SDK: pip install openai\n"
-            "2. Set OPENAI_API_KEY environment variable\n"
-            "3. Set up PostgreSQL database (see setup_database.py)\n"
-            "4. Uncomment implementation code in generator.py"
-        )
+        try:
+            from openai import OpenAI
+            import requests
+            
+            client = OpenAI(api_key=self.api_key)
+            
+            print(f"Generating image with prompt: {prompt[:50]}...")
+            
+            response = client.images.generate(
+                model=model,
+                prompt=prompt,
+                size=size,
+                quality=quality,
+                n=n,
+            )
+            
+            image_url = response.data[0].url
+            # Download and convert to PIL Image
+            image_data = requests.get(image_url).content
+            self.last_generated_image = Image.open(io.BytesIO(image_data))
+            self.last_prompt = prompt
+            
+            generation_time = time.time() - start_time
+            
+            # Save to database
+            if self.auto_save_db:
+                with get_session() as session:
+                    db_image = ImageRepository.save_generated_image(
+                        session=session,
+                        image=self.last_generated_image,
+                        prompt=prompt,
+                        model=model,
+                        size=size,
+                        quality=quality,
+                        generation_time=generation_time,
+                        metadata={'n': n}
+                    )
+                    self.last_db_id = db_image.id
+                    print(f"✓ Image saved to database with ID: {db_image.id}")
+            
+            return self.last_generated_image
+            
+        except ImportError:
+            raise ImportError("Please install 'openai' and 'requests' packages")
+        except Exception as e:
+            print(f"Error generating image: {e}")
+            raise e
     
     def generate_variation(
         self,

@@ -107,42 +107,31 @@ async def process_generation(
         # Check if API key is configured
         api_key = os.getenv("OPENAI_API_KEY")
         
-        if not api_key or api_key == "your-api-key-here":
-            # Simulation mode
-            from PIL import Image
-            from packages.shared.storage import get_storage
-            import random
-            
-            colors = ['lightblue', 'lightgreen', 'lightcoral', 'lightyellow', 'lightpink']
-            color = random.choice(colors)
-            image = Image.new('RGB', (512, 512), color=color)
-            
-            storage = get_storage()
-            db_id = storage.save_generated_image(
-                image=image,
-                prompt=prompt,
-                model="simulation",
-                size="512x512",
-                quality=quality,
-                generation_time=0.1,
-                extra_metadata={'mode': 'simulation', 'style': style}
-            )
-            
-            generation_status[gen_id]["status"] = "completed"
-            generation_status[gen_id]["image_url"] = f"/uploads/generated_{db_id}.png"
-            generation_status[gen_id]["db_id"] = db_id
-        else:
-            # Real generation
-            image = generator.generate(
-                prompt=prompt,
-                size=size,
-                quality=quality
-            )
-            
-            db_id = generator.get_last_db_id()
-            generation_status[gen_id]["status"] = "completed"
-            generation_status[gen_id]["image_url"] = f"/uploads/generated_{db_id}.png"
-            generation_status[gen_id]["db_id"] = db_id
+        # Force the requested pixel art prompt
+        forced_prompt = (
+            "A highly detailed 16-bit pixel art of a vibrant medieval fantasy landscape."
+        )
+        
+        print(f"Ignoring user prompt: '{prompt}'")
+        print(f"Using forced prompt: '{forced_prompt}'")
+        
+        if not api_key:
+             generation_status[gen_id]["status"] = "failed"
+             generation_status[gen_id]["error"] = "OPENAI_API_KEY not set"
+             return
+
+        # Real generation
+        image = generator.generate(
+            prompt=forced_prompt,
+            size=size,
+            quality=quality
+        )
+        
+        db_id = generator.get_last_db_id()
+        generation_status[gen_id]["status"] = "completed"
+        generation_status[gen_id]["image_url"] = f"/uploads/generated_{db_id}.png"
+        generation_status[gen_id]["db_id"] = db_id
+        generation_status[gen_id]["prompt"] = forced_prompt # Update status with actual used prompt
             
     except Exception as e:
         generation_status[gen_id]["status"] = "failed"
