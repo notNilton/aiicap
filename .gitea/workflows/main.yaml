@@ -1,0 +1,195 @@
+name: On Main
+run-name: On Main - ${{ gitea.actor }}
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  # ========================================================
+  # 1. Bumpa versões, commita e cria tags
+  # ========================================================
+  bump-versions:
+    runs-on: ubuntu-latest
+    outputs:
+      BACKEND_VERSION: ${{ steps.bump.outputs.BACKEND_VERSION }}
+      WEBAPP_VERSION: ${{ steps.bump.outputs.WEBAPP_VERSION }}
+      IMAGE_GEN_VERSION: ${{ steps.bump.outputs.IMAGE_GEN_VERSION }}
+    steps:
+      - name: Check out repository code
+        run: |
+          git config --global credential.helper store
+          echo "https://oauth2:${{ secrets.PUSH_TOKEN }}@gitea.nilbyte.com.br" > ~/.git-credentials
+          git clone --branch main "${{ gitea.server_url }}/${{ gitea.repository }}.git" .
+
+      - name: Configure Git
+        run: |
+          git config user.name "Gitea CI"
+          git config user.email "ci@nilbyte.com"
+          # Adaptado para o seu Gitea local
+          git remote set-url origin http://oauth2:${{ secrets.PUSH_TOKEN }}@gitea:3000/${{ gitea.repository }}.git
+
+      - name: Bump versions, commit and tag
+        id: bump
+        run: |
+          FILES_CHANGED=""
+          
+          # 1. Backend Bump
+          CURRENT=$(cat backend/VERSION)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          PATCH=$((PATCH + 1))
+          BACKEND_NEW="${MAJOR}.${MINOR}.${PATCH}"
+          echo "$BACKEND_NEW" > backend/VERSION
+          git add backend/VERSION
+          FILES_CHANGED="$FILES_CHANGED backend-v${BACKEND_NEW}"
+          echo "BACKEND_VERSION=$BACKEND_NEW" >> $GITHUB_OUTPUT
+
+          # 2. Image Generation Bump
+          CURRENT=$(cat image-generation/VERSION)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          PATCH=$((PATCH + 1))
+          IMAGE_GEN_NEW="${MAJOR}.${MINOR}.${PATCH}"
+          echo "$IMAGE_GEN_NEW" > image-generation/VERSION
+          git add image-generation/VERSION
+          FILES_CHANGED="$FILES_CHANGED image-gen-v${IMAGE_GEN_NEW}"
+          echo "IMAGE_GEN_VERSION=$IMAGE_GEN_NEW" >> $GITHUB_OUTPUT
+
+          # 3. WebApp Bump
+          CURRENT=$(jq -r '.version' webapp/package.json)
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          PATCH=$((PATCH + 1))
+          WEBAPP_NEW="${MAJOR}.${MINOR}.${PATCH}"
+          jq --arg v "$WEBAPP_NEW" '.version = $v' webapp/package.json > /tmp/pkg.json
+          mv /tmp/pkg.json webapp/package.json
+          git add webapp/package.json
+          FILES_CHANGED="$FILES_CHANGED webapp-v${WEBAPP_NEW}"
+          echo "WEBAPP_VERSION=$WEBAPP_NEW" >> $GITHUB_OUTPUT
+
+          PUSH_URL="http://oauth2:${{ secrets.PUSH_TOKEN }}@gitea:3000/${{ gitea.repository }}.git"
+
+          git commit -m "chore: bump versions $FILES_CHANGED [skip ci]"
+          
+          git pull --rebase origin main || { git rebase --abort; exit 1; }
+          git push "$PUSH_URL" HEAD:main
+
+          # Create and push tags
+          git tag -a "backend-v${BACKEND_NEW}" -m "backend-v${BACKEND_NEW}"
+          git tag -a "image-gen-v${IMAGE_GEN_NEW}" -m "image-gen-v${IMAGE_GEN_NEW}"
+          git tag -a "webapp-v${WEBAPP_NEW}" -m "webapp-v${WEBAPP_NEW}"
+          git push "$PUSH_URL" --tags
+
+  # ========================================================
+  # 2. Build & Push — Paralelo
+  # ========================================================
+  
+  build-backend:
+    needs: bump-versions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        run: |
+          git config --global credential.helper store
+          echo "https://oauth2:${{ secrets.PUSH_TOKEN }}@gitea.nilbyte.com.br" > ~/.git-credentials
+          git clone --depth=1 --branch main "${{ gitea.server_url }}/${{ gitea.repository }}.git" .
+
+      - name: Login to Gitea registry
+        run: |
+          GITEA_IP=$(docker network inspect nilbyte-git --format '{{range .Containers}}{{if eq .Name "gitea"}}{{.IPv4Address}}{{end}}{{end}}' | cut -d/ -f1)
+          REGISTRY="${GITEA_IP}:3000"
+          echo "REGISTRY=${REGISTRY}" >> $GITHUB_ENV
+          
+          # Fix DNS
+          CF_IP=$(getent hosts gitea.nilbyte.com.br | awk '{print $1}' | head -n 1)
+          if [ -n "$CF_IP" ]; then
+            docker run --rm -v /etc/hosts:/host_hosts alpine sh -c "grep -v 'gitea.nilbyte.com.br' /host_hosts > /tmp/h || true; echo '$CF_IP gitea.nilbyte.com.br' >> /tmp/h; cat /tmp/h > /host_hosts"
+          fi
+          
+          sudo chmod 666 /var/run/docker.sock
+          echo "${{ secrets.PUSH_TOKEN }}" | docker login "$REGISTRY" -u notNilton --password-stdin
+
+      - name: Build and push Backend image
+        run: |
+          docker build -f backend/Dockerfile \
+            -t ${{ env.REGISTRY }}/${{ gitea.repository }}/backend:latest \
+            -t ${{ env.REGISTRY }}/${{ gitea.repository }}/backend:${{ needs.bump-versions.outputs.BACKEND_VERSION }} \
+            .
+          docker push ${{ env.REGISTRY }}/${{ gitea.repository }}/backend:latest
+          docker push ${{ env.REGISTRY }}/${{ gitea.repository }}/backend:${{ needs.bump-versions.outputs.BACKEND_VERSION }}
+
+  build-image-generation:
+    needs: bump-versions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        run: |
+          git config --global credential.helper store
+          echo "https://oauth2:${{ secrets.PUSH_TOKEN }}@gitea.nilbyte.com.br" > ~/.git-credentials
+          git clone --depth=1 --branch main "${{ gitea.server_url }}/${{ gitea.repository }}.git" .
+
+      - name: Login to Gitea registry
+        run: |
+          GITEA_IP=$(docker network inspect nilbyte-git --format '{{range .Containers}}{{if eq .Name "gitea"}}{{.IPv4Address}}{{end}}{{end}}' | cut -d/ -f1)
+          REGISTRY="${GITEA_IP}:3000"
+          echo "REGISTRY=${REGISTRY}" >> $GITHUB_ENV
+          
+          # Fix DNS
+          CF_IP=$(getent hosts gitea.nilbyte.com.br | awk '{print $1}' | head -n 1)
+          if [ -n "$CF_IP" ]; then
+            docker run --rm -v /etc/hosts:/host_hosts alpine sh -c "grep -v 'gitea.nilbyte.com.br' /host_hosts > /tmp/h || true; echo '$CF_IP gitea.nilbyte.com.br' >> /tmp/h; cat /tmp/h > /host_hosts"
+          fi
+          
+          sudo chmod 666 /var/run/docker.sock
+          echo "${{ secrets.PUSH_TOKEN }}" | docker login "$REGISTRY" -u notNilton --password-stdin
+
+      - name: Build and push Image Generation image
+        run: |
+          docker build -f image-generation/Dockerfile \
+            -t ${{ env.REGISTRY }}/${{ gitea.repository }}/image-generation:latest \
+            -t ${{ env.REGISTRY }}/${{ gitea.repository }}/image-generation:${{ needs.bump-versions.outputs.IMAGE_GEN_VERSION }} \
+            .
+          docker push ${{ env.REGISTRY }}/${{ gitea.repository }}/image-generation:latest
+          docker push ${{ env.REGISTRY }}/${{ gitea.repository }}/image-generation:${{ needs.bump-versions.outputs.IMAGE_GEN_VERSION }}
+
+  build-webapp:
+    needs: bump-versions
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out repository code
+        run: |
+          git config --global credential.helper store
+          echo "https://oauth2:${{ secrets.PUSH_TOKEN }}@gitea.nilbyte.com.br" > ~/.git-credentials
+          git clone --depth=1 --branch main "${{ gitea.server_url }}/${{ gitea.repository }}.git" .
+
+      - name: Build WebApp
+        working-directory: webapp
+        run: |
+          npm ci --legacy-peer-deps
+          VITE_API_URL=https://api-aiicap.nilbyte.com.br \
+          VITE_APP_VERSION=${{ needs.bump-versions.outputs.WEBAPP_VERSION }} \
+          npm run build
+
+      - name: Login to Gitea registry
+        run: |
+          GITEA_IP=$(docker network inspect nilbyte-git --format '{{range .Containers}}{{if eq .Name "gitea"}}{{.IPv4Address}}{{end}}{{end}}' | cut -d/ -f1)
+          REGISTRY="${GITEA_IP}:3000"
+          echo "REGISTRY=${REGISTRY}" >> $GITHUB_ENV
+          
+          # Fix DNS
+          CF_IP=$(getent hosts gitea.nilbyte.com.br | awk '{print $1}' | head -n 1)
+          if [ -n "$CF_IP" ]; then
+            docker run --rm -v /etc/hosts:/host_hosts alpine sh -c "grep -v 'gitea.nilbyte.com.br' /host_hosts > /tmp/h || true; echo '$CF_IP gitea.nilbyte.com.br' >> /tmp/h; cat /tmp/h > /host_hosts"
+          fi
+          
+          sudo chmod 666 /var/run/docker.sock
+          echo "${{ secrets.PUSH_TOKEN }}" | docker login "$REGISTRY" -u notNilton --password-stdin
+
+      - name: Build and push WebApp image
+        run: |
+          docker build -f webapp/Dockerfile \
+            -t ${{ env.REGISTRY }}/${{ gitea.repository }}/webapp:latest \
+            -t ${{ env.REGISTRY }}/${{ gitea.repository }}/webapp:${{ needs.bump-versions.outputs.WEBAPP_VERSION }} \
+            ./webapp
+          docker push ${{ env.REGISTRY }}/${{ gitea.repository }}/webapp:latest
+          docker push ${{ env.REGISTRY }}/${{ gitea.repository }}/webapp:${{ needs.bump-versions.outputs.WEBAPP_VERSION }}
