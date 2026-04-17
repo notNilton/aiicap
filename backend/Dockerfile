@@ -15,12 +15,12 @@ COPY packages/shared /app/packages/shared
 RUN pip install -e /app/packages/shared
 
 # Copy backend code
-COPY apps/backend /app/apps/backend
+COPY backend /app/backend
 
 # Install backend dependencies
-RUN pip install -e /app/apps/backend
+RUN pip install -e /app/backend
 
-WORKDIR /app/apps/backend
+WORKDIR /app/backend
 
 EXPOSE 8000
 
