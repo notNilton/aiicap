@@ -21,14 +21,14 @@ services:
   backend:
     build:
       context: .
-      dockerfile: apps/backend/Dockerfile
+      dockerfile: backend/Dockerfile
     container_name: aiicap_backend
     environment:
       DATABASE_URL: postgresql://aiicap:aiicap_secret@postgres:5432/aiicap
-      IMAGE_GENERATOR_URL: http://image_generator:8001
+      IMAGE_GENERATOR_URL: http://image-generation:8001
       UPLOAD_DIR: /app/uploads
     volumes:
-      - ./apps/backend:/app/apps/backend
+      - ./backend:/app/backend
       - ./packages/shared:/app/packages/shared
       - uploads_data:/app/uploads
     ports:
@@ -39,17 +39,17 @@ services:
     command: uvicorn src.main:app --host 0.0.0.0 --port 8000 --reload
 
   # Image Generator Service
-  image_generator:
+  image-generation:
     build:
       context: .
-      dockerfile: apps/image_generator/Dockerfile
-    container_name: aiicap_image_generator
+      dockerfile: image-generation/Dockerfile
+    container_name: aiicap_image_generation
     environment:
       DATABASE_URL: postgresql://aiicap:aiicap_secret@postgres:5432/aiicap
       OPENAI_API_KEY: ${OPENAI_API_KEY:-your-api-key-here}
       UPLOAD_DIR: /app/uploads
     volumes:
-      - ./apps/image_generator:/app/apps/image_generator
+      - ./image-generation:/app/image-generation
       - ./packages/shared:/app/packages/shared
       - uploads_data:/app/uploads
     ports:
@@ -92,14 +92,14 @@ services:
       exit 0;
       "
 
-  # Frontend
-  frontend:
+  # Web Application
+  webapp:
     build:
-      context: ./apps/frontend
+      context: ./webapp
       dockerfile: Dockerfile
-    container_name: aiicap_frontend
+    container_name: aiicap_webapp
     volumes:
-      - ./apps/frontend:/app
+      - ./webapp:/app
       - /app/node_modules
     ports:
       - "5173:5173"
