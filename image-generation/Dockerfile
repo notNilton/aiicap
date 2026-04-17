@@ -15,12 +15,12 @@ COPY packages/shared /app/packages/shared
 RUN pip install -e /app/packages/shared
 
 # Copy image generator code
-COPY apps/image_generator /app/apps/image_generator
+COPY image-generation /app/image-generation
 
 # Install image generator dependencies
-RUN pip install -e /app/apps/image_generator
+RUN pip install -e /app/image-generation
 
-WORKDIR /app/apps/image_generator
+WORKDIR /app/image-generation
 
 EXPOSE 8001
 
