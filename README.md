@@ -83,3 +83,9 @@ make generate PROMPT="a retro pixel art space ship"
 | Correction CLI | CLI | `make correct` | `INPUT=in.png OUTPUT=out.png` |
 | Generation CLI | CLI | `make generate` | `PROMPT="description"` |
 | Database | SQLite | File | `data.db` |
+
+
+## Documentation
+
+- [📋 Roadmap & TODOs](docs/TODO.md) - Planned features and project roadmap
+- [📐 Architecture](docs/ARCHITECTURE.md) - System architecture and components
